@@ -1,4 +1,3 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
 import TablesPage from './pages/TablesPage';
@@ -10,7 +9,7 @@ import SettingsPage from './pages/SettingsPage';
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/jurnalAdis">
       <Routes>
         <Route path="/" element={<MainLayout />}>
           <Route index element={<TablesPage />} />

@@ -1,4 +1,4 @@
-import { db, type Order, type OrderItem, type Product, type RestaurantTable } from './db';
+import { db, type Product } from './db';
 
 export const dbServices = {
     // Products
