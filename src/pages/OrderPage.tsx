@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowLeft, CreditCard, Receipt } from 'lucide-react';
+import { ArrowLeft, CreditCard, Receipt, Search } from 'lucide-react';
 import { dbServices } from '../db/services';
 import { type Product } from '../db/db';
 import clsx from 'clsx';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
 import ProductActionModal from '../components/order/ProductActionModal';
+import QuantitySelectionModal from '../components/order/QuantitySelectionModal';
 
 const OrderPage: React.FC = () => {
     const { tableId } = useParams<{ tableId: string }>();
@@ -25,6 +26,7 @@ const OrderPage: React.FC = () => {
         [activeOrder]
     );
 
+    const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [confirmModal, setConfirmModal] = useState<{
@@ -43,19 +45,27 @@ const OrderPage: React.FC = () => {
         confirmText: 'Confirm'
     });
 
+    const [quantityModal, setQuantityModal] = useState<{
+        isOpen: boolean;
+        item: any | null;
+    }>({
+        isOpen: false,
+        item: null
+    });
+
     const handleStartOrder = async () => {
         if (!table) return;
         await dbServices.createOrder(table.id!);
     };
 
-    const handleAddItem = async (type: 'paid' | 'complimentary', _quantity: number) => {
+    const handleAddItem = async (type: 'paid' | 'complimentary', quantity: number) => {
         if (!selectedProduct) return;
 
         if (!activeOrder) {
             const orderId = await dbServices.createOrder(table!.id!);
-            await dbServices.addItemToOrder(orderId, selectedProduct, type);
+            await dbServices.addItemToOrder(orderId, selectedProduct, type, quantity);
         } else {
-            await dbServices.addItemToOrder(activeOrder.id!, selectedProduct, type);
+            await dbServices.addItemToOrder(activeOrder.id!, selectedProduct, type, quantity);
         }
         setSelectedProduct(null);
     };
@@ -81,9 +91,11 @@ const OrderPage: React.FC = () => {
     };
 
     const categories = ['All', ...Array.from(new Set(products?.map(p => p.category) || []))];
-    const filteredProducts = selectedCategory === 'All'
-        ? products
-        : products?.filter(p => p.category === selectedCategory);
+    const filteredProducts = products?.filter(p => {
+        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+    });
 
     if (!table) return <div>Loading...</div>;
 
@@ -92,28 +104,44 @@ const OrderPage: React.FC = () => {
             setConfirmModal({
                 isOpen: true,
                 title: 'Mark Item as Unpaid',
-                message: `Are you sure you want to mark "${item.productName}" as UNPAID?`,
+                message: `Are you sure you want to revert payment for "${item.productName}"? It will be merged back to unpaid items.`,
                 variant: 'danger',
                 confirmText: 'Mark Unpaid',
                 onConfirm: async () => {
-                    await dbServices.toggleOrderItemPaymentStatus(item.id!);
+                    await dbServices.markOrderItemAsUnpaid(item.id!);
                     setConfirmModal(prev => ({ ...prev, isOpen: false }));
                 }
             });
             return;
         }
 
-        setConfirmModal({
-            isOpen: true,
-            title: 'Mark Item as Paid',
-            message: `Are you sure you want to mark "${item.productName}" as paid?`,
-            variant: 'primary',
-            confirmText: 'Confirm Paid',
-            onConfirm: async () => {
-                await dbServices.toggleOrderItemPaymentStatus(item.id!);
-                setConfirmModal(prev => ({ ...prev, isOpen: false }));
-            }
-        });
+        // Use quantity modal if more than 1 item
+        if (item.quantity > 1) {
+            setQuantityModal({
+                isOpen: true,
+                item: item
+            });
+        } else {
+            // Directly pay if only 1
+            setConfirmModal({
+                isOpen: true,
+                title: 'Mark Item as Paid',
+                message: `Mark "${item.productName}" as paid?`,
+                variant: 'primary',
+                confirmText: 'Confirm',
+                onConfirm: async () => {
+                    await dbServices.markOrderItemAsPaid(item.id!, 1);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                }
+            });
+        }
+    };
+
+    const handleQuantityConfirm = async (quantity: number) => {
+        if (quantityModal.item) {
+            await dbServices.markOrderItemAsPaid(quantityModal.item.id!, quantity);
+            setQuantityModal({ isOpen: false, item: null });
+        }
     };
 
     const paidAmount = orderItems?.filter(i => i.isPaid).reduce((sum, item) => sum + (item.price * item.quantity), 0) || 0;
@@ -139,40 +167,79 @@ const OrderPage: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Categories */}
-                <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-hide shrink-0">
-                    {categories.map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setSelectedCategory(cat)}
-                            className={clsx(
-                                'px-3 py-1.5 lg:px-4 lg:py-2 rounded-xl whitespace-nowrap font-medium transition-colors text-sm lg:text-base',
-                                selectedCategory === cat
-                                    ? 'bg-primary text-surface'
-                                    : 'bg-surface text-text-muted hover:bg-secondary hover:text-white'
-                            )}
-                        >
-                            {cat}
-                        </button>
-                    ))}
+                {/* Search & Categories */}
+                <div className="mb-4 shrink-0 px-1">
+                    <div className="relative mb-3">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+                        <input
+                            type="text"
+                            placeholder="Search products..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="bg-surface border border-secondary rounded-xl pl-9 pr-4 py-2 text-white focus:outline-none focus:border-primary w-full"
+                        />
+                    </div>
+
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                        {categories.map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setSelectedCategory(cat)}
+                                className={clsx(
+                                    'px-3 py-1.5 lg:px-4 lg:py-2 rounded-xl whitespace-nowrap font-medium transition-colors text-sm lg:text-base',
+                                    selectedCategory === cat
+                                        ? 'bg-primary text-surface'
+                                        : 'bg-surface text-text-muted hover:bg-secondary hover:text-white'
+                                )}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {/* Products Grid */}
                 <div className="flex-1 overflow-y-auto pr-2 pb-4">
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-2 lg:gap-4">
-                        {filteredProducts?.map(product => (
-                            <button
-                                key={product.id}
-                                onClick={() => setSelectedProduct(product)}
-                                className="bg-surface border border-secondary p-2 sm:p-3 lg:p-4 rounded-xl hover:border-primary/50 hover:bg-secondary/50 transition-all text-left group flex flex-col h-full"
-                            >
-                                <div className="flex justify-between items-start mb-1 sm:mb-2 w-full">
-                                    <h3 className="font-bold text-white group-hover:text-primary transition-colors text-xs sm:text-sm lg:text-base line-clamp-2 leading-tight">{product.name}</h3>
-                                    <span className="text-primary font-bold text-xs sm:text-sm lg:text-base whitespace-nowrap ml-1 sm:ml-2">{Math.floor(product.price)} TL</span>
-                                </div>
-                                <p className="text-[10px] sm:text-xs lg:text-sm text-text-muted line-clamp-2 mt-auto leading-tight">{product.description}</p>
-                            </button>
-                        ))}
+                        {filteredProducts?.map(product => {
+                            const isOutOfStock = !product.isUnlimited && (product.stock || 0) <= 0;
+
+                            return (
+                                <button
+                                    key={product.id}
+                                    onClick={() => !isOutOfStock && setSelectedProduct(product)}
+                                    disabled={isOutOfStock}
+                                    className={`bg-surface border border-secondary p-2 sm:p-3 lg:p-4 rounded-xl transition-all text-left flex flex-col h-full relative overflow-hidden ${isOutOfStock
+                                        ? 'opacity-50 cursor-not-allowed grayscale'
+                                        : 'hover:border-primary/50 hover:bg-secondary/50 group'
+                                        }`}
+                                >
+                                    {isOutOfStock && (
+                                        <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/50 backdrop-blur-[1px]">
+                                            <span className="bg-danger text-white text-xs font-bold px-2 py-1 rounded-full transform -rotate-12 border border-white/20 shadow-lg">
+                                                TÜKENDİ
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-between items-start mb-1 sm:mb-2 w-full">
+                                        <h3 className={`font-bold text-xs sm:text-sm lg:text-base line-clamp-2 leading-tight ${isOutOfStock ? 'text-text-muted' : 'text-white group-hover:text-primary transition-colors'
+                                            }`}>{product.name}</h3>
+                                        <span className={`font-bold text-xs sm:text-sm lg:text-base whitespace-nowrap ml-1 sm:ml-2 ${isOutOfStock ? 'text-text-muted' : 'text-primary'
+                                            }`}>{Math.floor(product.price)} TL</span>
+                                    </div>
+                                    <p className="text-[10px] sm:text-xs lg:text-sm text-text-muted line-clamp-2 mt-auto leading-tight">{product.description}</p>
+
+                                    {/* Optional: Show stock count if low and not unlimited */}
+                                    {!product.isUnlimited && (product.stock || 0) <= 5 && !isOutOfStock && (
+                                        <div className="mt-2 text-[10px] text-warning font-medium flex items-center gap-1">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse"></div>
+                                            Only {product.stock} left
+                                        </div>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
@@ -197,47 +264,33 @@ const OrderPage: React.FC = () => {
                         </div>
                     )}
 
-                    {orderItems?.filter(i => i.price > 0).map(item => (
+                    {/* UNPAID ITEMS */}
+                    {orderItems?.filter(i => !i.isPaid && i.price > 0).map(item => (
                         <div
                             key={item.id}
                             onClick={() => handleToggleItemPayment(item)}
-                            className={clsx(
-                                "flex justify-between items-center p-1.5 lg:p-3 rounded-lg lg:rounded-xl cursor-pointer transition-colors select-none",
-                                item.isPaid
-                                    ? "bg-success/10 border border-success/20"
-                                    : "bg-background/50 hover:bg-background/80"
-                            )}
+                            className="flex justify-between items-center p-1.5 lg:p-3 rounded-lg lg:rounded-xl cursor-pointer transition-colors select-none bg-background/50 hover:bg-background/80"
                         >
                             <div>
                                 <div className="flex items-center gap-2">
-                                    <div className={clsx("font-medium text-xs lg:text-base", item.isPaid ? "text-success" : "text-white")}>
+                                    <div className="font-medium text-xs lg:text-base text-white">
                                         {item.productName}
                                     </div>
-                                    {item.isPaid && (
-                                        <span className="text-[10px] lg:text-xs font-bold bg-success text-white px-1.5 py-0.5 rounded-full">
-                                            ÖDENDİ
-                                        </span>
-                                    )}
                                 </div>
-                                <div className={clsx("text-[10px] lg:text-sm", item.isPaid ? "text-success/70" : "text-text-muted")}>
+                                <div className="text-[10px] lg:text-sm text-text-muted">
                                     <span>{Math.floor(item.price)} TL</span>
                                     {' x '}{item.quantity}
                                 </div>
                             </div>
-                            <div className={clsx("font-bold text-xs lg:text-base", item.isPaid ? "text-success" : "text-white")}>
+                            <div className="font-bold text-xs lg:text-base text-white">
                                 {Math.floor(item.price * item.quantity)} TL
                             </div>
                         </div>
                     ))}
 
-                    {/* Complimentary Items Section */}
+                    {/* COMPLIMENTARY ITEMS (Grouped with Unpaid usually, or bottom?) */}
                     {orderItems?.some(i => i.price === 0) && (
                         <>
-                            <div className="flex items-center gap-2 mt-2 lg:mt-4 mb-1 lg:mb-2 text-success font-bold text-[10px] lg:text-sm uppercase tracking-wider">
-                                <div className="h-px bg-success/20 flex-1" />
-                                <span>İkramlar</span>
-                                <div className="h-px bg-success/20 flex-1" />
-                            </div>
                             {orderItems?.filter(i => i.price === 0).map(item => (
                                 <div key={item.id} className="flex justify-between items-center bg-success/5 border border-success/10 p-1.5 lg:p-3 rounded-lg lg:rounded-xl">
                                     <div>
@@ -253,6 +306,40 @@ const OrderPage: React.FC = () => {
                                 </div>
                             ))}
                         </>
+                    )}
+
+                    {/* PAID ITEMS SECTION */}
+                    {orderItems?.some(i => i.isPaid && i.price > 0) && (
+                        <div className="pt-2 mt-2 border-t border-secondary border-dashed">
+                            <div className="text-[10px] lg:text-xs font-bold text-success uppercase tracking-wider mb-2 opacity-80">
+                                Ödenenler
+                            </div>
+                            {orderItems?.filter(i => i.isPaid && i.price > 0).map(item => (
+                                <div
+                                    key={item.id}
+                                    onClick={() => handleToggleItemPayment(item)}
+                                    className="flex justify-between items-center p-1.5 lg:p-3 rounded-lg lg:rounded-xl cursor-pointer transition-colors select-none bg-success/10 border border-success/20 hover:bg-success/20"
+                                >
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="font-medium text-xs lg:text-base text-success">
+                                                {item.productName}
+                                            </div>
+                                            <span className="text-[10px] lg:text-xs font-bold bg-success text-white px-1.5 py-0.5 rounded-full">
+                                                ÖDENDİ
+                                            </span>
+                                        </div>
+                                        <div className="text-[10px] lg:text-sm text-success/70">
+                                            <span>{Math.floor(item.price)} TL</span>
+                                            {' x '}{item.quantity}
+                                        </div>
+                                    </div>
+                                    <div className="font-bold text-xs lg:text-base text-success">
+                                        {Math.floor(item.price * item.quantity)} TL
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
 
@@ -314,6 +401,15 @@ const OrderPage: React.FC = () => {
                 message={confirmModal.message}
                 variant={confirmModal.variant}
                 confirmText={confirmModal.confirmText}
+            />
+
+            <QuantitySelectionModal
+                isOpen={quantityModal.isOpen}
+                onClose={() => setQuantityModal({ isOpen: false, item: null })}
+                onConfirm={handleQuantityConfirm}
+                maxQuantity={quantityModal.item?.quantity || 1}
+                title="Partial Payment"
+                productName={quantityModal.item?.productName || ''}
             />
         </div>
     );

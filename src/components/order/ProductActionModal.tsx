@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CreditCard, Gift } from 'lucide-react';
+import { X, CreditCard, Gift, Minus, Plus } from 'lucide-react';
 import { type Product } from '../../db/db';
 
 interface ProductActionModalProps {
@@ -16,7 +16,27 @@ const ProductActionModal: React.FC<ProductActionModalProps> = ({
     product,
     onAdd
 }) => {
+    const [quantity, setQuantity] = useState(1);
+
+    useEffect(() => {
+        if (isOpen) {
+            setQuantity(1);
+        }
+    }, [isOpen]);
+
     if (!product) return null;
+
+    const handleIncrement = () => {
+        if (product.isUnlimited || (product.stock && quantity < product.stock)) {
+            setQuantity(prev => prev + 1);
+        }
+    };
+
+    const handleDecrement = () => {
+        if (quantity > 1) {
+            setQuantity(prev => prev - 1);
+        }
+    };
 
     return (
         <AnimatePresence>
@@ -48,10 +68,31 @@ const ProductActionModal: React.FC<ProductActionModalProps> = ({
                             </button>
                         </div>
 
-                        <div className="p-4 sm:p-6 space-y-3 sm:space-y-4">
+                        <div className="p-4 sm:p-6 space-y-4">
+                            {/* Quantity Selector */}
+                            <div className="flex items-center justify-center gap-4 mb-2">
+                                <button
+                                    onClick={handleDecrement}
+                                    disabled={quantity <= 1}
+                                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-secondary hover:bg-primary hover:text-white flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                                >
+                                    <Minus className="w-5 h-5 sm:w-6 sm:h-6" />
+                                </button>
+                                <div className="w-16 sm:w-20 text-center font-bold text-2xl sm:text-3xl text-white">
+                                    {quantity}
+                                </div>
+                                <button
+                                    onClick={handleIncrement}
+                                    disabled={!product.isUnlimited && quantity >= (product.stock || 0)}
+                                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-secondary hover:bg-primary hover:text-white flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                                >
+                                    <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
+                                </button>
+                            </div>
+
                             <button
                                 onClick={() => {
-                                    onAdd('paid', 1);
+                                    onAdd('paid', quantity);
                                     onClose();
                                 }}
                                 className="w-full py-3 sm:py-4 bg-surface border border-secondary hover:border-primary hover:bg-secondary/50 rounded-xl transition-all flex items-center justify-between px-4 sm:px-6 group"
@@ -66,13 +107,13 @@ const ProductActionModal: React.FC<ProductActionModalProps> = ({
                                     </div>
                                 </div>
                                 <div className="text-lg sm:text-xl font-bold text-primary">
-                                    {Math.floor(product.price)} TL
+                                    {Math.floor(product.price * quantity)} TL
                                 </div>
                             </button>
 
                             <button
                                 onClick={() => {
-                                    onAdd('complimentary', 1);
+                                    onAdd('complimentary', quantity);
                                     onClose();
                                 }}
                                 className="w-full py-3 sm:py-4 bg-surface border border-secondary hover:border-success hover:bg-success/10 rounded-xl transition-all flex items-center justify-between px-4 sm:px-6 group"

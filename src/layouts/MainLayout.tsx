@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, UtensilsCrossed, FileText, Settings, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, UtensilsCrossed, FileText, Settings, LogOut, Menu, X, Package } from 'lucide-react';
 import clsx from 'clsx';
 
 const MainLayout: React.FC = () => {
@@ -8,6 +8,7 @@ const MainLayout: React.FC = () => {
     const navItems = [
         { to: '/', icon: LayoutDashboard, label: 'Tables' },
         { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
+        { to: '/inventory', icon: Package, label: 'Inventory' }, // Added Inventory
         { to: '/reports', icon: FileText, label: 'Reports' },
         { to: '/settings', icon: Settings, label: 'Settings' },
     ];

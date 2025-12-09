@@ -6,7 +6,19 @@ export interface Product {
     price: number;
     category: string;
     description?: string;
-    type: 'paid' | 'complimentary'; // Added type
+    type: 'paid' | 'complimentary';
+    stock: number; // Added stock
+    isUnlimited: boolean; // Added isUnlimited
+}
+
+export interface StockLog {
+    id?: number;
+    productId: number;
+    productName: string;
+    changeAmount: number;
+    newStock: number;
+    reason: string;
+    createdAt: Date;
 }
 
 export interface RestaurantTable {
@@ -20,7 +32,7 @@ export interface RestaurantTable {
 export interface Order {
     id?: number;
     tableId: number;
-    status: 'active' | 'paid' | 'no_payment'; // Added no_payment
+    status: 'active' | 'paid' | 'no_payment';
     totalAmount: number;
     createdAt: Date;
     closedAt?: Date;
@@ -34,7 +46,7 @@ export interface OrderItem {
     quantity: number;
     price: number;
     type: 'paid' | 'complimentary';
-    isPaid?: boolean; // Added isPaid
+    isPaid?: boolean;
 }
 
 export class RestaurantDatabase extends Dexie {
@@ -42,15 +54,23 @@ export class RestaurantDatabase extends Dexie {
     diningTables!: Table<RestaurantTable>;
     orders!: Table<Order>;
     orderItems!: Table<OrderItem>;
+    stockLogs!: Table<StockLog>; // Added stockLogs
 
     constructor() {
         super('RestaurantPOS');
-        // Bumped version to 5 for schema change
-        this.version(5).stores({
-            products: '++id, name, category, type',
+        // Bumped version to 7 to reset stock to 5 based on user request
+        this.version(7).stores({
+            products: '++id, name, category, type, stock, isUnlimited',
             diningTables: '++id, name, section, status',
             orders: '++id, tableId, status, createdAt',
-            orderItems: '++id, orderId, productId, isPaid'
+            orderItems: '++id, orderId, productId, isPaid',
+            stockLogs: '++id, productId, createdAt'
+        }).upgrade(async tx => {
+            // Set all existing products to 5 stock
+            await tx.table('products').toCollection().modify({
+                stock: 5,
+                isUnlimited: false
+            });
         });
     }
 }
@@ -99,7 +119,9 @@ db.on('populate', () => {
                 category: cat.name,
                 price: Math.floor(cat.basePrice + (index * 5) + (Math.random() * 20)), // Integer price
                 description: `Lezzetli ${item} sunumu`,
-                type: 'paid' // Default to paid
+                type: 'paid', // Default to paid
+                stock: 5, // Default stock now 5
+                isUnlimited: false // Default to tracked
             });
         });
     });

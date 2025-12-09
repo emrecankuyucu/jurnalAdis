@@ -6,6 +6,7 @@ import OrderPage from './pages/OrderPage';
 
 import ReportsPage from './pages/ReportsPage';
 import SettingsPage from './pages/SettingsPage';
+import InventoryPage from './pages/InventoryPage'; // Added Import
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/" element={<MainLayout />}>
           <Route index element={<TablesPage />} />
           <Route path="menu" element={<MenuPage />} />
+          <Route path="inventory" element={<InventoryPage />} /> {/* Added Route */}
           <Route path="order/:tableId" element={<OrderPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<SettingsPage />} />

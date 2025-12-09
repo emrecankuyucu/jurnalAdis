@@ -76,21 +76,74 @@ const ReportsPage: React.FC = () => {
         }, {} as Record<number, string>) || {};
     }, [tables]);
 
+    const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+
+    const handleSort = (key: string) => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+        }));
+    };
+
+    const sortOrders = (ordersToSort: any[]) => {
+        return [...ordersToSort].sort((a, b) => {
+            const direction = sortConfig.direction === 'asc' ? 1 : -1;
+
+            switch (sortConfig.key) {
+                case 'date':
+                case 'time':
+                    return (a.createdAt.getTime() - b.createdAt.getTime()) * direction;
+                case 'table':
+                    const tableA = tablesMap[a.tableId] || '';
+                    const tableB = tablesMap[b.tableId] || '';
+                    return tableA.localeCompare(tableB) * direction;
+                case 'amount':
+                    return (a.totalAmount - b.totalAmount) * direction;
+                case 'status':
+                    return a.status.localeCompare(b.status) * direction;
+                case 'id':
+                    return (a.id - b.id) * direction;
+                default:
+                    return 0;
+            }
+        });
+    };
+
+    const sortedPaidOrders = sortOrders(paidOrders);
+    const sortedUnpaidOrders = sortOrders(unpaidOrders);
+
     const OrderTable = ({ title, data }: { title: string, data: any[] }) => (
-        <div className="bg-surface border border-secondary rounded-2xl overflow-hidden mb-8">
-            <div className="p-4 sm:p-6 border-b border-secondary">
+        <div className="bg-surface border border-secondary rounded-2xl overflow-hidden mb-8 flex flex-col max-h-[600px]">
+            <div className="p-4 sm:p-6 border-b border-secondary shrink-0 bg-surface z-10">
                 <h2 className="text-lg sm:text-xl font-bold text-white">{title}</h2>
             </div>
-            <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[600px]">
-                    <thead>
+            <div className="overflow-auto custom-scrollbar">
+                <table className="w-full text-left min-w-[600px] relative">
+                    <thead className="sticky top-0 z-10 bg-surface shadow-sm">
                         <tr className="bg-secondary/30 text-text-muted text-xs sm:text-sm">
-                            <th className="p-3 sm:p-4 font-medium">Order ID</th>
-                            <th className="p-3 sm:p-4 font-medium">Date</th>
-                            <th className="p-3 sm:p-4 font-medium">Time</th>
-                            <th className="p-3 sm:p-4 font-medium">Table</th>
-                            <th className="p-3 sm:p-4 font-medium text-right">Amount</th>
-                            <th className="p-3 sm:p-4 font-medium text-center">Status</th>
+                            {[
+                                { key: 'id', label: 'Order ID' },
+                                { key: 'date', label: 'Date' },
+                                { key: 'time', label: 'Time' },
+                                { key: 'table', label: 'Table' },
+                                { key: 'amount', label: 'Amount', align: 'right' },
+                                { key: 'status', label: 'Status', align: 'center' }
+                            ].map((header) => (
+                                <th
+                                    key={header.key}
+                                    onClick={() => handleSort(header.key)}
+                                    className={`p-3 sm:p-4 font-medium cursor-pointer hover:bg-secondary/50 transition-colors select-none ${header.align === 'right' ? 'text-right' : header.align === 'center' ? 'text-center' : 'text-left'}`}
+                                >
+                                    <div className={`flex items-center gap-1 ${header.align === 'right' ? 'justify-end' : header.align === 'center' ? 'justify-center' : 'justify-start'}`}>
+                                        {header.label}
+                                        {sortConfig.key === header.key && (
+                                            <span className="text-primary text-[10px]">
+                                                {sortConfig.direction === 'asc' ? '▲' : '▼'}
+                                            </span>
+                                        )}
+                                    </div>
+                                </th>
+                            ))}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-secondary text-xs sm:text-sm">
@@ -198,10 +251,10 @@ const ReportsPage: React.FC = () => {
                 averageOrderValue={averageOrderValue}
             />
 
-            <OrderTable title="Paid Orders (Ödenen Siparişler)" data={paidOrders} />
+            <OrderTable title="Paid Orders (Ödenen Siparişler)" data={sortedPaidOrders} />
 
-            {unpaidOrders.length > 0 && (
-                <OrderTable title="Unpaid/Complimentary Orders (Ödemesiz Kapatılanlar)" data={unpaidOrders} />
+            {sortedUnpaidOrders.length > 0 && (
+                <OrderTable title="Unpaid/Complimentary Orders (Ödemesiz Kapatılanlar)" data={sortedUnpaidOrders} />
             )}
 
             <OrderDetailsModal
